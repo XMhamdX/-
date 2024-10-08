@@ -5,7 +5,7 @@ import os
 import multiprocessing
 import time
 
-def video_player(video_path, control_queue, mute_event, player_id):
+def video_player(video_path, start_time, control_queue, mute_event, player_id):
   instance = vlc.Instance("--no-video-title-show", "--avcodec-hw=none")
   player = instance.media_player_new()
   media = instance.media_new(video_path)
@@ -22,6 +22,8 @@ def video_player(video_path, control_queue, mute_event, player_id):
       player.set_xwindow(window.winfo_id())
   
   player.play()
+  time.sleep(1)  # تأخير بسيط لضمان بدء التشغيل
+  player.set_time(start_time)  # ضبط وقت البدء
   
   # التحكم في كتم الصوت
   is_muted = False
@@ -78,83 +80,106 @@ if __name__ == '__main__':
       print("يجب اختيار فيديوهين!")
       exit()
   
-  # إنشاء قوائم التحكم
-  control_queue1 = multiprocessing.Queue()
-  control_queue2 = multiprocessing.Queue()
+  # إدخالات وقت البدء
+  tk.Label(root, text="وقت البدء للفيديو الأول (ساعة:دقيقة:ثانية):").pack()
+  start_time1_entry = tk.Entry(root)
+  start_time1_entry.pack()
   
-  # أحداث كتم الصوت
-  mute_event1 = multiprocessing.Event()
-  mute_event2 = multiprocessing.Event()
+  tk.Label(root, text="وقت البدء للفيديو الثاني (ساعة:دقيقة:ثانية):").pack()
+  start_time2_entry = tk.Entry(root)
+  start_time2_entry.pack()
   
-  # إنشاء عمليات المشغلات
-  process1 = multiprocessing.Process(target=video_player, args=(video1_path, control_queue1, mute_event1, 1))
-  process2 = multiprocessing.Process(target=video_player, args=(video2_path, control_queue2, mute_event2, 2))
+  def parse_time(time_str):
+      try:
+          h, m, s = map(int, time_str.split(':'))
+          return (h * 3600 + m * 60 + s) * 1000  # تحويل إلى ميلي ثانية
+      except:
+          return 0  # إذا كان الإدخال غير صحيح، ابدأ من البداية
   
-  process1.start()
-  process2.start()
+  def start_videos():
+      start_time1 = parse_time(start_time1_entry.get())
+      start_time2 = parse_time(start_time2_entry.get())
+      
+      # إنشاء قوائم التحكم
+      control_queue1 = multiprocessing.Queue()
+      control_queue2 = multiprocessing.Queue()
+      
+      # أحداث كتم الصوت
+      mute_event1 = multiprocessing.Event()
+      mute_event2 = multiprocessing.Event()
+      
+      # إنشاء عمليات المشغلات
+      process1 = multiprocessing.Process(target=video_player, args=(video1_path, start_time1, control_queue1, mute_event1, 1))
+      process2 = multiprocessing.Process(target=video_player, args=(video2_path, start_time2, control_queue2, mute_event2, 2))
+      
+      process1.start()
+      process2.start()
+      
+      # التحكم بالإيقاف والتشغيل
+      is_paused = False
+      
+      def toggle_play_pause():
+          nonlocal is_paused
+          if is_paused:
+              control_queue1.put('play')
+              control_queue2.put('play')
+              is_paused = False
+          else:
+              control_queue1.put('pause')
+              control_queue2.put('pause')
+              is_paused = True
+      
+      # التقديم والتأخير
+      def forward_10s():
+          control_queue1.put('forward')
+          control_queue2.put('forward')
+      
+      def backward_10s():
+          control_queue1.put('backward')
+          control_queue2.put('backward')
+      
+      # كتم الصوت لكل فيديو
+      def toggle_mute1():
+          if mute_event1.is_set():
+              mute_event1.clear()
+          else:
+              mute_event1.set()
+      
+      def toggle_mute2():
+          if mute_event2.is_set():
+              mute_event2.clear()
+          else:
+              mute_event2.set()
+      
+      # إنشاء أزرار التحكم
+      control_frame = tk.Frame(root)
+      control_frame.pack()
+      
+      play_pause_button = tk.Button(control_frame, text="تشغيل/إيقاف مؤقت", command=toggle_play_pause)
+      play_pause_button.pack(side=tk.LEFT)
+      
+      forward_button = tk.Button(control_frame, text="تقديم 10 ثوانٍ", command=forward_10s)
+      forward_button.pack(side=tk.LEFT)
+      
+      backward_button = tk.Button(control_frame, text="تأخير 10 ثوانٍ", command=backward_10s)
+      backward_button.pack(side=tk.LEFT)
+      
+      mute1_button = tk.Button(control_frame, text="كتم/إلغاء كتم الصوت للفيديو الأول", command=toggle_mute1)
+      mute1_button.pack(side=tk.LEFT)
+      
+      mute2_button = tk.Button(control_frame, text="كتم/إلغاء كتم الصوت للفيديو الثاني", command=toggle_mute2)
+      mute2_button.pack(side=tk.LEFT)
+      
+      # ربط أزرار لوحة المفاتيح
+      root.bind('<space>', lambda e: toggle_play_pause())
+      root.bind('<Right>', lambda e: forward_10s())
+      root.bind('<Left>', lambda e: backward_10s())
+      
+      # إيقاف العمليات عند إغلاق النافذة الرئيسية
+      root.protocol("WM_DELETE_WINDOW", lambda: (process1.terminate(), process2.terminate(), root.destroy()))
   
-  # التحكم بالإيقاف والتشغيل
-  is_paused = False
-  
-  def toggle_play_pause():
-      global is_paused
-      if is_paused:
-          control_queue1.put('play')
-          control_queue2.put('play')
-          is_paused = False
-      else:
-          control_queue1.put('pause')
-          control_queue2.put('pause')
-          is_paused = True
-  
-  # التقديم والتأخير
-  def forward_10s():
-      control_queue1.put('forward')
-      control_queue2.put('forward')
-  
-  def backward_10s():
-      control_queue1.put('backward')
-      control_queue2.put('backward')
-  
-  # كتم الصوت لكل فيديو
-  def toggle_mute1():
-      if mute_event1.is_set():
-          mute_event1.clear()
-      else:
-          mute_event1.set()
-  
-  def toggle_mute2():
-      if mute_event2.is_set():
-          mute_event2.clear()
-      else:
-          mute_event2.set()
-  
-  # إنشاء أزرار التحكم
-  control_frame = tk.Frame(root)
-  control_frame.pack()
-  
-  play_pause_button = tk.Button(control_frame, text="تشغيل/إيقاف مؤقت", command=toggle_play_pause)
-  play_pause_button.pack(side=tk.LEFT)
-  
-  forward_button = tk.Button(control_frame, text="تقديم 10 ثوانٍ", command=forward_10s)
-  forward_button.pack(side=tk.LEFT)
-  
-  backward_button = tk.Button(control_frame, text="تأخير 10 ثوانٍ", command=backward_10s)
-  backward_button.pack(side=tk.LEFT)
-  
-  mute1_button = tk.Button(control_frame, text="كتم/إلغاء كتم الصوت للفيديو الأول", command=toggle_mute1)
-  mute1_button.pack(side=tk.LEFT)
-  
-  mute2_button = tk.Button(control_frame, text="كتم/إلغاء كتم الصوت للفيديو الثاني", command=toggle_mute2)
-  mute2_button.pack(side=tk.LEFT)
-  
-  # ربط أزرار لوحة المفاتيح
-  root.bind('<space>', lambda e: toggle_play_pause())
-  root.bind('<Right>', lambda e: forward_10s())
-  root.bind('<Left>', lambda e: backward_10s())
+  # زر لبدء الفيديوهات
+  start_button = tk.Button(root, text="بدء الفيديوهات", command=start_videos)
+  start_button.pack()
   
   root.mainloop()
-  
-  # إيقاف العمليات عند إغلاق النافذة الرئيسية
-  process1.terminate()
-  process2.terminate()
