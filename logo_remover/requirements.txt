@@ -1,0 +1,7 @@
+# متطلبات أدوات الماسك (make_mask.py)
+opencv-python>=4.8
+numpy>=1.24
+
+# ملاحظة: ProPainter له متطلباته الخاصة، بتتثبّت عن طريق:
+#   bash logo_remover/setup_propainter.sh
+# (وبتحتاج PyTorch مناسب لكارت الشاشة عندك).
