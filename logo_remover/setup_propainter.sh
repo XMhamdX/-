@@ -32,6 +32,23 @@ python -c "import torch" 2>/dev/null || {
 }
 python -m pip install -r "$PP_DIR/requirements.txt"
 
+echo ">> تنزيل أوزان الموديل (≈150MB، مرة واحدة)..."
+BASE="https://github.com/sczhou/ProPainter/releases/download/v0.1.0"
+mkdir -p "$PP_DIR/weights"
+for f in raft-things.pth recurrent_flow_completion.pth ProPainter.pth; do
+  dst="$PP_DIR/weights/$f"
+  # نعتبره صالحًا فقط لو أكبر من 1MB (تفاديًا لصفحات الأخطاء الصغيرة)
+  if [ -f "$dst" ] && [ "$(wc -c < "$dst")" -gt 1000000 ]; then
+    echo "   موجود: $f"
+    continue
+  fi
+  echo "   تنزيل: $f"
+  curl -fSL --retry 3 -o "$dst" "$BASE/$f" || {
+    echo "   !! فشل تنزيل $f — نزّله يدويًا من:"
+    echo "      $BASE/$f  إلى  $PP_DIR/weights/"
+  }
+done
+
 echo ""
 echo ">> تم التجهيز. جرّب:"
 echo "   python logo_remover/make_mask.py --video in.mp4 --box 25,62,232,110 --out mask.png"

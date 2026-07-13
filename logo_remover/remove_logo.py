@@ -38,6 +38,21 @@ def check_tool(name):
         sys.exit(f"مطلوب '{name}' لكنه غير مثبّت. ثبّته الأول.")
 
 
+def source_fps(video):
+    """يقرأ إطارات/ثانية للفيديو الأصلي (لتصدير ProPainter بنفس السرعة)."""
+    try:
+        out = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=r_frame_rate",
+             "-of", "default=nokey=1:noprint_wrappers=1", video],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        num, den = out.split("/") if "/" in out else (out, "1")
+        return max(1, round(float(num) / float(den)))
+    except Exception:
+        return 30
+
+
 def parse_box(text):
     parts = [int(p) for p in text.replace(" ", "").split(",")]
     if len(parts) != 4:
@@ -76,15 +91,32 @@ def mode_propainter(args):
             "أو حدّد المسار بمتغيّر البيئة PROPAINTER_DIR."
         )
 
-    results_dir = os.path.abspath(args.workdir)
-    os.makedirs(results_dir, exist_ok=True)
+    workdir = os.path.abspath(args.workdir)
+    frames_dir = os.path.join(workdir, "frames_in")
+    out_dir = os.path.join(workdir, "pp_out")
+    if os.path.isdir(frames_dir):
+        shutil.rmtree(frames_dir)
+    os.makedirs(frames_dir, exist_ok=True)
+    os.makedirs(out_dir, exist_ok=True)
 
+    video = os.path.abspath(args.video)
+
+    # (1) استخراج الفريمات لمجلد — نغذّي ProPainter المجلد بدل ملف الفيديو،
+    #     ده بيتفادى torchvision.io.read_video المتوقّف في النسخ الحديثة.
+    print("\n(1/3) استخراج الفريمات...")
+    run(["ffmpeg", "-y", "-i", video, "-start_number", "0",
+         os.path.join(frames_dir, "%05d.png")])
+
+    fps = source_fps(video)
+    # (2) تشغيل ProPainter على مجلد الفريمات
+    print("\n(2/3) تشغيل ProPainter...")
     cmd = [
         sys.executable, infer,
-        "--video", os.path.abspath(args.video),
+        "--video", frames_dir,
         "--mask", os.path.abspath(args.mask),
-        "--output", results_dir,
+        "--output", out_dir,
         "--mask_dilation", str(args.mask_dilation),
+        "--save_fps", str(fps),
     ]
     if args.fp16:
         cmd.append("--fp16")
@@ -92,17 +124,18 @@ def mode_propainter(args):
         cmd += ["--resize_ratio", str(args.resize_ratio)]
     run(cmd)
 
-    name = os.path.splitext(os.path.basename(args.video))[0]
-    inpainted = os.path.join(results_dir, name, "inpaint_out.mp4")
+    # اسم مجلد الناتج = اسم مجلد الدخل (frames_in)
+    inpainted = os.path.join(out_dir, os.path.basename(frames_dir),
+                             "inpaint_out.mp4")
     if not os.path.isfile(inpainted):
         sys.exit(f"مالقيتش ناتج ProPainter المتوقّع: {inpainted}")
 
-    # ProPainter بيشيل الصوت — نرجّعه من الأصل
-    print("\nإرجاع الصوت الأصلي...")
+    # (3) ProPainter بيشيل الصوت — نرجّعه من الأصل
+    print("\n(3/3) إرجاع الصوت الأصلي...")
     run([
         "ffmpeg", "-y",
         "-i", inpainted,
-        "-i", os.path.abspath(args.video),
+        "-i", video,
         "-map", "0:v", "-map", "1:a?",
         "-c:v", "copy", "-c:a", "aac", "-shortest",
         "-movflags", "+faststart",

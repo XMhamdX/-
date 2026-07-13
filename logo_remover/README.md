@@ -25,11 +25,21 @@ pip install -r logo_remover/requirements.txt
 #   Windows:        نزّله من ffmpeg.org وضِفه للـ PATH
 ```
 
-لمسار الذكاء الصناعي:
+لمسار الذكاء الصناعي (ProPainter):
 
 ```bash
+# 1) ثبّت PyTorch المناسب لجهازك أولًا من https://pytorch.org
+#    (نسخة CUDA لو عندك كارت NVIDIA — أسرع بكتير)
+# 2) ثم:
 bash logo_remover/setup_propainter.sh
 ```
+
+السكربت بيستنسخ ProPainter، يثبّت متطلباته، **وينزّل أوزان الموديل (≈150MB)**
+مرة واحدة في `logo_remover/ProPainter/weights/`.
+
+> **ملاحظة مهمة:** ProPainter بيشتغل على المعالج (CPU) بس **بطيء جدًا** —
+> يُنصح بشدّة بكارت شاشة NVIDIA. على CPU استخدم `--resize_ratio 0.5` ومقاطع
+> قصيرة للتجربة فقط.
 
 ---
 
