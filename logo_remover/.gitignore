@@ -1,0 +1,8 @@
+# ProPainter clone (ينزّله setup_propainter.sh — كبير ومش بيتحفظ في git)
+ProPainter/
+# نواتج مؤقّتة
+results/
+pp_out/
+frames_in/
+*.mp4
+mask*.png
